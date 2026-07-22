@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +34,8 @@ const (
 	MountCheckInterval = 10 * time.Second
 
 	DefaultEnginePortCount = 1
+
+	reproBlockReplicaCreateDir = "/host/var/lib/longhorn/repro-block-replica-create"
 )
 
 /* Lock order
@@ -179,6 +183,28 @@ func (pm *Manager) getProcessesToUpdateConditions(volumeMountPointMap map[string
 	return processesToUpdate
 }
 
+func getReproBlockedReplicaVolume(args []string) string {
+	var volumeName string
+	isReplica := false
+	for i, arg := range args {
+		if arg == "replica" {
+			isReplica = true
+		}
+		if arg == "--volume-name" && i+1 < len(args) {
+			volumeName = args[i+1]
+		}
+	}
+	if !isReplica || volumeName == "" {
+		return ""
+	}
+
+	if _, err := os.Stat(filepath.Join(reproBlockReplicaCreateDir, volumeName)); err != nil {
+		return ""
+	}
+
+	return volumeName
+}
+
 // ProcessCreate will create a process according to the request.
 // If the specified process name exists already, the creation will fail.
 func (pm *Manager) ProcessCreate(ctx context.Context, req *rpc.ProcessCreateRequest) (ret *rpc.ProcessResponse, err error) {
@@ -217,6 +243,18 @@ func (pm *Manager) ProcessCreate(ctx context.Context, req *rpc.ProcessCreateRequ
 			logrus.WithError(closeErr).Warnf("Process Manager: failed to close logger for process %v after registration failure", req.Spec.Name)
 		}
 		return nil, err
+	}
+
+	if volumeName := getReproBlockedReplicaVolume(req.Spec.Args); volumeName != "" {
+		p.lock.Lock()
+		p.State = StateStopped
+		p.lock.Unlock()
+		logrus.WithFields(logrus.Fields{
+			"process": req.Spec.Name,
+			"volume":  volumeName,
+		}).Warn("Process Manager: reproduction hook left replica process stopped")
+		p.UpdateCh <- p
+		return p.RPCResponse(), nil
 	}
 
 	p.UpdateCh <- p
