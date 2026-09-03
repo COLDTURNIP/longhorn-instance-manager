@@ -16,6 +16,7 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 
 	lhLonghorn "github.com/longhorn/go-common-libs/longhorn"
+	commonnet "github.com/longhorn/go-common-libs/net"
 	spdkapi "github.com/longhorn/longhorn-spdk-engine/pkg/api"
 	spdkclient "github.com/longhorn/longhorn-spdk-engine/pkg/client"
 	rpc "github.com/longhorn/types/pkg/generated/imrpc"
@@ -52,6 +53,7 @@ type InstanceOps interface {
 type V1DataEngineInstanceOps struct {
 	processManagerServiceAddress string
 	clientTLSConfig              *tls.Config
+	ipFamily                     commonnet.IPFamily
 }
 type V2DataEngineInstanceOps struct {
 	spdkServiceAddress string
@@ -68,11 +70,12 @@ type Server struct {
 	ops                 map[rpc.DataEngine]InstanceOps
 }
 
-func NewServer(ctx context.Context, logsDir, processManagerServiceAddress, spdkServiceAddress string, clientTLSConfig *tls.Config, v2DataEngineEnabled bool) (*Server, error) {
+func NewServer(ctx context.Context, logsDir, processManagerServiceAddress, spdkServiceAddress string, clientTLSConfig *tls.Config, v2DataEngineEnabled bool, ipFamily commonnet.IPFamily) (*Server, error) {
 	ops := map[rpc.DataEngine]InstanceOps{
 		rpc.DataEngine_DATA_ENGINE_V1: V1DataEngineInstanceOps{
 			processManagerServiceAddress: processManagerServiceAddress,
 			clientTLSConfig:              clientTLSConfig,
+			ipFamily:                     ipFamily,
 		},
 		rpc.DataEngine_DATA_ENGINE_V2: V2DataEngineInstanceOps{
 			spdkServiceAddress: spdkServiceAddress,
@@ -96,6 +99,16 @@ func NewServer(ctx context.Context, logsDir, processManagerServiceAddress, spdkS
 func (s *Server) startMonitoring() {
 	<-s.ctx.Done()
 	logrus.Infof("%s: stopped monitoring due to the context done", types.InstanceGrpcService)
+}
+func getV1PortArgs(ipFamily commonnet.IPFamily) []string {
+	switch ipFamily {
+	case commonnet.IPFamilyIPv4:
+		return []string{"--listen,0.0.0.0:"}
+	case commonnet.IPFamilyIPv6:
+		return []string{"--listen,[::]:"}
+	default:
+		return []string{"--listen,:"}
+	}
 }
 
 func (ops V1DataEngineInstanceOps) newProcessManagerClient(ctx context.Context, cancel context.CancelFunc) (*client.ProcessManagerClient, error) {
@@ -165,7 +178,7 @@ func (ops V1DataEngineInstanceOps) InstanceCreate(req *rpc.InstanceCreateRequest
 		}
 	}()
 
-	process, err := pmClient.ProcessCreate(req.Spec.Name, req.Spec.ProcessInstanceSpec.Binary, int(req.Spec.PortCount), req.Spec.ProcessInstanceSpec.Args, req.Spec.PortArgs)
+	process, err := pmClient.ProcessCreate(req.Spec.Name, req.Spec.ProcessInstanceSpec.Binary, int(req.Spec.PortCount), req.Spec.ProcessInstanceSpec.Args, getV1PortArgs(ops.ipFamily))
 	if err != nil {
 		return nil, err
 	}
@@ -609,7 +622,7 @@ func (ops V1DataEngineInstanceOps) InstanceReplace(req *rpc.InstanceReplaceReque
 	}()
 
 	process, err := pmClient.ProcessReplace(req.Spec.Name,
-		req.Spec.ProcessInstanceSpec.Binary, int(req.Spec.PortCount), req.Spec.ProcessInstanceSpec.Args, req.Spec.PortArgs, req.TerminateSignal)
+		req.Spec.ProcessInstanceSpec.Binary, int(req.Spec.PortCount), req.Spec.ProcessInstanceSpec.Args, getV1PortArgs(ops.ipFamily), req.TerminateSignal)
 	if err != nil {
 		return nil, err
 	}

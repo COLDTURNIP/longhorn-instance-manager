@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	commonnet "github.com/longhorn/go-common-libs/net"
+
 	rpc "github.com/longhorn/types/pkg/generated/imrpc"
 )
 
@@ -51,8 +53,8 @@ func TestV1DataEngineInstanceOps_StructureCorrect(t *testing.T) {
 
 	v1Type := reflect.TypeOf(v1Ops)
 
-	// V1 should have exactly 2 fields: processManagerServiceAddress and clientTLSConfig
-	expectedFieldCount := 2
+	// V1 should include the process manager address, TLS config, and process-wide IP family.
+	expectedFieldCount := 3
 	actualFieldCount := v1Type.NumField()
 
 	if actualFieldCount != expectedFieldCount {
@@ -67,6 +69,11 @@ func TestV1DataEngineInstanceOps_StructureCorrect(t *testing.T) {
 	_, hasClientTLS := v1Type.FieldByName("clientTLSConfig")
 	if !hasClientTLS {
 		t.Error("V1DataEngineInstanceOps should have clientTLSConfig field")
+	}
+
+	_, hasIPFamily := v1Type.FieldByName("ipFamily")
+	if !hasIPFamily {
+		t.Error("V1DataEngineInstanceOps should have ipFamily field")
 	}
 
 	_, hasSPDK := v1Type.FieldByName("spdkServiceAddress")
@@ -84,7 +91,7 @@ func TestV1DataEngineInstanceOps_TLSConfigPropagation(t *testing.T) {
 	spdkServiceAddress := "localhost:8504"
 	tlsConfig := buildTestTLSConfig(t)
 
-	server, err := NewServer(ctx, logsDir, processManagerServiceAddress, spdkServiceAddress, tlsConfig, false)
+	server, err := NewServer(ctx, logsDir, processManagerServiceAddress, spdkServiceAddress, tlsConfig, false, commonnet.IPFamilyUnspecified)
 
 	if err != nil {
 		t.Fatalf("NewServer should succeed, but got error: %v", err)
@@ -116,7 +123,7 @@ func TestV2DataEngineInstanceOps_TLSConfigPropagation(t *testing.T) {
 	spdkServiceAddress := "localhost:8504"
 	tlsConfig := buildTestTLSConfig(t)
 
-	server, err := NewServer(ctx, logsDir, processManagerServiceAddress, spdkServiceAddress, tlsConfig, true)
+	server, err := NewServer(ctx, logsDir, processManagerServiceAddress, spdkServiceAddress, tlsConfig, true, commonnet.IPFamilyUnspecified)
 
 	if err != nil {
 		t.Fatalf("NewServer should succeed, but got error: %v", err)
@@ -147,7 +154,7 @@ func TestNewServer_WithoutTLS(t *testing.T) {
 	processManagerServiceAddress := "localhost:8500"
 	spdkServiceAddress := "localhost:8504"
 
-	server, err := NewServer(ctx, logsDir, processManagerServiceAddress, spdkServiceAddress, nil, false)
+	server, err := NewServer(ctx, logsDir, processManagerServiceAddress, spdkServiceAddress, nil, false, commonnet.IPFamilyUnspecified)
 
 	if err != nil {
 		t.Fatalf("NewServer should succeed without TLS, but got error: %v", err)

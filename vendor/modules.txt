@@ -341,7 +341,7 @@ github.com/longhorn/backupstore/s3
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
 github.com/longhorn/backupstore/vfs
-# github.com/longhorn/go-common-libs v0.0.0-20260830093844-bff76489ddfd
+# github.com/longhorn/go-common-libs v0.0.0-20260902114220-f588954a78f0 => github.com/COLDTURNIP/longhorn-go-common-libs v0.0.0-20260902114220-f588954a78f0
 ## explicit; go 1.25.10
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
@@ -386,7 +386,7 @@ github.com/longhorn/longhorn-engine/pkg/sync
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/pkg/util/disk
-# github.com/longhorn/longhorn-spdk-engine v1.13.0-dev-20260809.0.20260903035344-e170357c0b55
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20260903110626-c982fee98f6c => github.com/COLDTURNIP/longhorn-spdk-engine v0.0.0-20260903110626-c982fee98f6c
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
@@ -966,3 +966,5 @@ sigs.k8s.io/structured-merge-diff/v6/value
 # sigs.k8s.io/yaml v1.6.0
 ## explicit; go 1.22
 sigs.k8s.io/yaml
+# github.com/longhorn/go-common-libs => github.com/COLDTURNIP/longhorn-go-common-libs v0.0.0-20260902114220-f588954a78f0
+# github.com/longhorn/longhorn-spdk-engine => github.com/COLDTURNIP/longhorn-spdk-engine v0.0.0-20260903110626-c982fee98f6c

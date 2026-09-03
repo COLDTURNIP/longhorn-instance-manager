@@ -26,12 +26,8 @@ import (
 
 	"k8s.io/mount-utils"
 
+	commonnet "github.com/longhorn/go-common-libs/net"
 	engineutil "github.com/longhorn/longhorn-engine/pkg/util"
-	spdk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk"
-	spdkutil "github.com/longhorn/longhorn-spdk-engine/pkg/util"
-	rpc "github.com/longhorn/types/pkg/generated/imrpc"
-	spdkrpc "github.com/longhorn/types/pkg/generated/spdkrpc"
-
 	"github.com/longhorn/longhorn-instance-manager/pkg/disk"
 	"github.com/longhorn/longhorn-instance-manager/pkg/health"
 	"github.com/longhorn/longhorn-instance-manager/pkg/instance"
@@ -39,6 +35,10 @@ import (
 	"github.com/longhorn/longhorn-instance-manager/pkg/proxy"
 	"github.com/longhorn/longhorn-instance-manager/pkg/types"
 	"github.com/longhorn/longhorn-instance-manager/pkg/util"
+	spdk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk"
+	spdkutil "github.com/longhorn/longhorn-spdk-engine/pkg/util"
+	rpc "github.com/longhorn/types/pkg/generated/imrpc"
+	spdkrpc "github.com/longhorn/types/pkg/generated/spdkrpc"
 )
 
 const (
@@ -70,6 +70,10 @@ func StartCmd() *cli.Command {
 				Name:  "spdk-enabled",
 				Usage: "enable SPDK support",
 			},
+			&cli.StringFlag{
+				Name:  "ip-family",
+				Usage: "select the IP family for all instance listeners (empty, ipv4, or ipv6)",
+			},
 		},
 		Action: func(_ context.Context, c *cli.Command) error {
 			err := start(c)
@@ -78,6 +82,18 @@ func StartCmd() *cli.Command {
 			}
 			return err
 		},
+	}
+}
+func parseIPFamily(value string) (commonnet.IPFamily, error) {
+	switch value {
+	case "":
+		return commonnet.IPFamilyUnspecified, nil
+	case string(commonnet.IPFamilyIPv4):
+		return commonnet.IPFamilyIPv4, nil
+	case string(commonnet.IPFamilyIPv6):
+		return commonnet.IPFamilyIPv6, nil
+	default:
+		return commonnet.IPFamilyUnspecified, errors.Errorf("invalid IP family %q: must be empty, ipv4, or ipv6", value)
 	}
 }
 
@@ -142,12 +158,16 @@ func unfreezeFilesystems() error {
 }
 
 func start(c *cli.Command) (err error) {
+	ipFamily, err := parseIPFamily(c.String("ip-family"))
+	if err != nil {
+		return err
+	}
+
 	listen := c.String("listen")
 	logsDir := c.String("logs-dir")
 	processPortRange := c.String("port-range")
 	spdkPortRange := c.String("spdk-port-range")
 	spdkEnabled := c.Bool("spdk-enabled")
-
 	defer func() {
 		if spdkEnabled {
 			logrus.Infof("Stopping spdk_tgt daemon")
@@ -215,11 +235,10 @@ func start(c *cli.Command) (err error) {
 	}
 	servers[types.DiskGrpcService] = diskGRPCServer
 	listeners[types.DiskGrpcService] = diskGRPCListener
-
 	// Start instance server
 	instanceGRPCServer, instanceRPCListener, err := setupInstanceGRPCServer(ctx, logsDir,
 		addresses[types.InstanceGrpcService], toClientAddress(addresses[types.ProcessManagerGrpcService]),
-		spdkClientAddr, serverTLSConfig, clientTLSConfig, spdkEnabled)
+		spdkClientAddr, serverTLSConfig, clientTLSConfig, spdkEnabled, ipFamily)
 	if err != nil {
 		logrus.WithError(err).Errorf("Failed to set up %s", types.InstanceGrpcService)
 		return err
@@ -248,7 +267,7 @@ func start(c *cli.Command) (err error) {
 
 	// Start spdk server
 	if spdkEnabled {
-		spdkGRPCServer, spdkGRPCListener, err := setupSPDKGRPCServer(ctx, spdkPortRange, addresses[types.SpdkGrpcService], serverTLSConfig, clientTLSConfig)
+		spdkGRPCServer, spdkGRPCListener, err := setupSPDKGRPCServer(ctx, spdkPortRange, addresses[types.SpdkGrpcService], serverTLSConfig, clientTLSConfig, ipFamily)
 		if err != nil {
 			logrus.WithError(err).Errorf("Failed to set up %s", types.SpdkGrpcService)
 			return err
@@ -387,13 +406,13 @@ func setupDiskGRPCServer(ctx context.Context, listen, spdkServiceAddress string,
 	return grpcServer, rpcListener, nil
 }
 
-func setupSPDKGRPCServer(ctx context.Context, portRange, listen string, serverTLSConfig, clientTLSConfig *tls.Config) (*grpc.Server, net.Listener, error) {
+func setupSPDKGRPCServer(ctx context.Context, portRange, listen string, serverTLSConfig, clientTLSConfig *tls.Config, ipFamily commonnet.IPFamily) (*grpc.Server, net.Listener, error) {
 	portStart, portEnd, err := util.ParsePortRange(portRange)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	srv, err := spdk.NewServer(ctx, portStart, portEnd, spdk.NewServiceClientFactory(clientTLSConfig))
+	srv, err := spdk.NewServer(ctx, portStart, portEnd, ipFamily, spdk.NewServiceClientFactory(clientTLSConfig))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -465,8 +484,8 @@ func setupProcessManagerGRPCServer(ctx context.Context, portRange, logsDir, list
 	return srv, grpcServer, grpcListener, nil
 }
 
-func setupInstanceGRPCServer(ctx context.Context, logsDir, listen, processManagerServiceAddress, spdkServiceAddress string, serverTLSConfig, clientTLSConfig *tls.Config, spdkEnabled bool) (*grpc.Server, net.Listener, error) {
-	srv, err := instance.NewServer(ctx, logsDir, processManagerServiceAddress, spdkServiceAddress, clientTLSConfig, spdkEnabled)
+func setupInstanceGRPCServer(ctx context.Context, logsDir, listen, processManagerServiceAddress, spdkServiceAddress string, serverTLSConfig, clientTLSConfig *tls.Config, spdkEnabled bool, ipFamily commonnet.IPFamily) (*grpc.Server, net.Listener, error) {
+	srv, err := instance.NewServer(ctx, logsDir, processManagerServiceAddress, spdkServiceAddress, clientTLSConfig, spdkEnabled, ipFamily)
 	if err != nil {
 		return nil, nil, err
 	}
