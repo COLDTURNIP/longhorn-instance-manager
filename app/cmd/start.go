@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
-	_ "net/http/pprof" // for runtime profiling
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	_ "net/http/pprof" // for runtime profiling
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -28,6 +29,11 @@ import (
 
 	commonnet "github.com/longhorn/go-common-libs/net"
 	engineutil "github.com/longhorn/longhorn-engine/pkg/util"
+	spdk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk"
+	spdkutil "github.com/longhorn/longhorn-spdk-engine/pkg/util"
+	rpc "github.com/longhorn/types/pkg/generated/imrpc"
+	spdkrpc "github.com/longhorn/types/pkg/generated/spdkrpc"
+
 	"github.com/longhorn/longhorn-instance-manager/pkg/disk"
 	"github.com/longhorn/longhorn-instance-manager/pkg/health"
 	"github.com/longhorn/longhorn-instance-manager/pkg/instance"
@@ -35,10 +41,6 @@ import (
 	"github.com/longhorn/longhorn-instance-manager/pkg/proxy"
 	"github.com/longhorn/longhorn-instance-manager/pkg/types"
 	"github.com/longhorn/longhorn-instance-manager/pkg/util"
-	spdk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk"
-	spdkutil "github.com/longhorn/longhorn-spdk-engine/pkg/util"
-	rpc "github.com/longhorn/types/pkg/generated/imrpc"
-	spdkrpc "github.com/longhorn/types/pkg/generated/spdkrpc"
 )
 
 const (
